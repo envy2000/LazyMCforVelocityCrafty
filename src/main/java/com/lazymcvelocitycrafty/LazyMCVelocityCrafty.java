@@ -4,7 +4,7 @@ import com.google.inject.Inject;
 import com.lazymcvelocitycrafty.commands.ServerCommand;
 import com.lazymcvelocitycrafty.config.ConfigLoader;
 import com.lazymcvelocitycrafty.config.PluginConfig;
-import com.lazymcvelocitycrafty.listeners.PlayerJoinListener;
+import com.lazymcvelocitycrafty.listeners.PlayerServerConnectListener;
 import com.lazymcvelocitycrafty.server.ServerManager;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
@@ -63,7 +63,7 @@ public class LazyMCVelocityCrafty {
     inactivityTracker.scheduleChecker();
 
     //register listeners
-    proxy.getEventManager().register(this, new PlayerJoinListener(proxy, config, serverManager, logger));
+    proxy.getEventManager().register(this, new PlayerServerConnectListener(proxy, config, serverManager, logger));
     
     logger.info("LazyMCVelocityCrafty initialized successfully.");
   }

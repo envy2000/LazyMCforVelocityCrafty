@@ -1,11 +1,11 @@
 package com.example.lazymcvelocitycrafty;
 //Holy shit, that is a lot of imports
-import com.example.lazymcvelocitycrafty.commands.BackendControlCommand;
-import com.example.lazymcvelocitycrafty.commands.ServerCommand;
-import com.example.lazymcvelocitycrafty.config.ConfigManager;
-import com.example.lazymcvelocitycrafty.config.PluginConfig;
-import com.example.lazymcvelocitycrafty.server.ServerManager;
 import com.google.inject.Inject;
+import com.lazymcvelocitycrafty.commands.ServerCommand;
+import com.lazymcvelocitycrafty.config.ConfigLoader;
+import com.lazymcvelocitycrafty.config.PluginConfig;
+import com.lazymcvelocitycrafty.listeners.PlayerJoinListener;
+import com.lazymcvelocitycrafty.server.ServerManager;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.plugin.Plugin;
@@ -20,32 +20,55 @@ import java.nio.file.Path;
   name = "LazyMCVelocityCrafty",
   version = "1.0.0",
   description = "Manages Velocity backend server startup/shutdown through Crafty Controller v2 API"
+  authors = {"RealNV2k"}
 )
 public class LazyMCVelocityCrafty {
-  private final ProxyServer server;
+  
+  private final ProxyServer proxy;
   private final Logger logger;
   private final Path dataDirectory;
-
   private PluginConfig config;
   private ServerManager serverManager;
 
   @Inject
-  public LazyMCVelocityCrafty(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
-    this.server = server;
+  public LazyMCVelocityCrafty(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
+    this.proxy = proxy;
     this.logger = logger;
     this.dataDirectory = dataDirectory;
   }
 
   @Subscribe
-  public void onProxyInitialize(ProxyInitializeEvent event) {
+  public void onProxyInitialization(ProxyInitializeEvent event) {
     logger.info("Loading LazyMCVelocityCrafty...");
 
-    this.config = ConfigManager.loadConfig(dataDirectory.resolve("config.toml"), logger);
-    this.serverManager = new ServerManager(server, logger, config);
+    config = ConfigLoader.loadConfig(dataDirectory, logger);
+    serverManager = new ServerManager(proxy, logger, config, this);
 
-    server.getCommandManager().register("server", new ServerCommand(serverManager, config), "servers");
-    server.getCommandManager().register("backend", new BackendControlCommand(serverManager), "backends");
+    //register commands
+    proxy.getCommandManager().register(
+      proxy.getCommandManager().metaBuilder("server").build(),
+      new ServerCommand(proxy, logger, config, serverManager)
+    );
 
+    //register listeners
+    proxy.getEventManager().register(this, new PlayerJoinListener(proxy, config, serverManager, logger));
+    
     logger.info("LazyMCVelocityCrafty initialized successfully.");
+  }
+
+  public ProxyServer getProxy() {
+    return proxy;
+  }
+
+  public Logger getLogger() {
+    return logger;
+  }
+
+  public PluginConfig getConfig() {
+    return config;
+  }
+
+  public ServerManager getServerManager() {
+    return serverManager;
   }
 }

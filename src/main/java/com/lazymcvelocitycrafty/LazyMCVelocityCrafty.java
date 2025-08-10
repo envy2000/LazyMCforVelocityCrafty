@@ -1,17 +1,18 @@
 package com.example.lazymcvelocitycrafty;
 // Holy shit, that is a lot of imports
 import com.lazymcvelocitycrafty.commands.ModeCommand;
-import com.lazymcvelocitycrafty.commands.ServerCommand;
 import com.lazymcvelocitycrafty.commands.StartStopCommand;
-import com.lazymcvelocitycrafty.config.ConfigLoader;
 import com.lazymcvelocitycrafty.config.PluginConfig;
 import com.lazymcvelocitycrafty.listeners.PlayerServerConnectListener;
+import com.lazymcvelocitycrafty.mode.ModeManager;
 import com.lazymcvelocitycrafty.server.ServerManager;
-import com.velocitypowered.api.event.Subscribe;
+import com.lazymcvelocitycrafty.tracker.InactivityTracker;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
-import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.server.RegisteredServer;
+import com.velocitypowered.api.proxy.player.Player;
 import org.slf4j.Logger;
 
 import javax.inject.Inject;
@@ -42,27 +43,27 @@ public class LazyMCVelocityCrafty {
     this.dataDirectory = dataDirectory;
   }
 
-  @Subscribe
+  @com.velocitypowered.api.event.Subscribe
   public void onProxyInitialization(ProxyInitializeEvent event) {
     logger.info("Loading LazyMCVelocityCrafty...");
 
-    config = ConfigLoader.loadConfig(dataDirectory, logger);
+    // Load Config
+    try {
+      config = PluginConfig.load(dataDirectory);
+    } catch (Exception e) {
+      logger.error("Failed to load config", e);
+      proxy.shutdown();
+      return;
+    }
 
-    // After loading config and serverManager initialization
-
-    // Initial server manager
+    // Initialize server manager
     serverManager = new ServerManager(proxy, config, logger);
     
-    // Initialization ModeManager
+    // Initialization ModeManager and load modes.json
     modeManager = new ModeManager(dataDirectory, logger);
     modeManager.load();
     
     // Register commands
-    // /server <server>
-    proxy.getCommandManager().register(
-      proxy.getCommandManager().metaBuilder("server").build(),
-      new ServerCommand(proxy, logger, config, serverManager)
-    );
     // /lvmode <server> <mode|view>
     proxy.getCommandManager().register(
       proxy.getCommandManager().metaBuilder("lvmode").permission("lazymc.setmode").build(),

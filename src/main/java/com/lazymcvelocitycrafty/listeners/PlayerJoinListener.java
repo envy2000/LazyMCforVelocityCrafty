@@ -8,14 +8,14 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import org.slf4j.Logger;
 
-public class PlayerJoinListener {
+public class PlayerServerConnectListener {
 
   private final ProxyServer proxy;
   private final PluginConfig config;
   private final ServerManager serverManager;
   private final Logger logger;
 
-  public PlayerJoinListener(ProxyServer proxy, PluginConfig config, ServerManager serverManager, Logger logger) {
+  public PlayerServerConnectListener(ProxyServer proxy, PluginConfig config, ServerManager serverManager, Logger logger) {
     this.proxy = proxy;
     this.config = config;
     this.serverManager = serverManager;

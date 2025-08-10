@@ -1,0 +1,9 @@
+{
+  "id": "lazymcvelocitycrafty",
+  "name": "LazyMCVelocityCrafty",
+  "version": "1.0.0",
+  "main": "com.example.lazymcvelocitycrafty.LazyMCVelocityCrafty",
+  "authors": ["RealNV2k"],
+  "dependencies": [],
+  "description": "Manages Velocity backend server startup/shutdown through Crafty Controller v2 API"
+}

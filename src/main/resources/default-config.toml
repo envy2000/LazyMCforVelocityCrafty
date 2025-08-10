@@ -1,0 +1,32 @@
+# Crafty API base URL and API key for authentication
+[crafty]
+host = "https://192.168.1.60:8443"
+api_key = "your_crafty_api_key_here"
+
+# The name of the backend server that acts as the always-on lobby
+# A lobby must be defined in the servers section of your velocity.toml
+lobby_server = "lobby"
+
+# Whether to explicitly handle player fallback when shutting down servers in Hard/SoftForceOff mode.
+handle_fallback_on_forced_off = true
+
+# Server-specific configurations
+#
+# # [servers.server-name]
+# # crafty_id = "uuid used by crafty for this server"
+# # idle_timeout_seconds = "how many seconds of inactivity should pass on the backend server before LMVC shuts it down"
+#
+# server-name should match the key assigned to your backend in the servers section of your velocity.toml
+# crafty-uuid is the unique identifier given to each server 
+# Put all servers you want to be managed by LMVC here
+[servers]
+
+  # Example backend server named "factions"
+  [servers.factions]
+  crafty_id = "uuid-for-factions-server"
+  idle_timeout_seconds = 300
+
+  # Example backend server named "minigames"
+  [servers.minigames]
+  crafty_id = "uuid-for-minigames-server"
+  idle_timeout_seconds = 600

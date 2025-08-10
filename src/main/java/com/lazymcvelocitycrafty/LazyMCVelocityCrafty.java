@@ -1,7 +1,8 @@
 package com.example.lazymcvelocitycrafty;
 // Holy shit, that is a lot of imports
-import com.google.inject.Inject;
+import com.lazymcvelocitycrafty.commands.ModeCommand;
 import com.lazymcvelocitycrafty.commands.ServerCommand;
+import com.lazymcvelocitycrafty.commands.StartStopCommand;
 import com.lazymcvelocitycrafty.config.ConfigLoader;
 import com.lazymcvelocitycrafty.config.PluginConfig;
 import com.lazymcvelocitycrafty.listeners.PlayerServerConnectListener;
@@ -13,7 +14,9 @@ import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import org.slf4j.Logger;
 
+import javax.inject.Inject;
 import java.nio.file.Path;
+import java.util.Optional;
 
 @Plugin(
   id = "lazymcvelocitycrafty",
@@ -27,11 +30,13 @@ public class LazyMCVelocityCrafty {
   private final ProxyServer proxy;
   private final Logger logger;
   private final Path dataDirectory;
+  
   private PluginConfig config;
   private ServerManager serverManager;
+  private ModeManager modeManager
 
   @Inject
-  public LazyMCVelocityCrafty(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
+  public LazyMCVelocityCrafty(ProxyServer proxy, Logger logger, Path dataDirectory) {
     this.proxy = proxy;
     this.logger = logger;
     this.dataDirectory = dataDirectory;
@@ -42,38 +47,56 @@ public class LazyMCVelocityCrafty {
     logger.info("Loading LazyMCVelocityCrafty...");
 
     config = ConfigLoader.loadConfig(dataDirectory, logger);
-    serverManager = new ServerManager(proxy, logger, config, this);
 
-    // create ModeManager
-    ModeManager modeManager = new ModeManager(dataDirectory, logger);
+    // After loading config and serverManager initialization
+
+    // Initial server manager
+    serverManager = new ServerManager(proxy, config, logger);
+    
+    // Initialization ModeManager
+    modeManager = new ModeManager(dataDirectory, logger);
     modeManager.load();
-    this.modeManager = modeManager;
-
-    // register commands
+    
+    // Register commands
+    // /server <server>
     proxy.getCommandManager().register(
       proxy.getCommandManager().metaBuilder("server").build(),
       new ServerCommand(proxy, logger, config, serverManager)
     );
-    proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("lvmode").build(), new ModeCommand(modeManager));
-    proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("lvstart").permission("lazymc.start").build(), new StartStopCommand(serverManager, true));
-    proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("lvstop").permission("lazymc.stop").build(), new StartStopCommand(serverManager, false));
+    // /lvmode <server> <mode|view>
+    proxy.getCommandManager().register(
+      proxy.getCommandManager().metaBuilder("lvmode").permission("lazymc.setmode").build(),
+      new ModeCommand(modeManager)
+    );
+    // /lvstart <server>
+    proxy.getCommandManager().register(
+      proxy.getCommandManager().metaBuilder("lvstart").permission("lazymc.start").build(),
+      new StartStopCommand(serverManager, true)
+    );
+    // /lvstop <server>
+    proxy.getCommandManager().register(
+      proxy.getCommandManager().metaBuilder("lvstop").permission("lazymc.stop").build(),
+      new StartStopCommand(serverManager, false)
+    );
 
-    // start inactivity tracker
+    // Register listener with ModeManager
+    proxy.getEventManager().register(this, new PlayerServerConnectListener(this, serverManager, modeManager));
+  
+    // Schedule inactivity tracker
     InactivityTracker inactivityTracker = new InactivityTracker(proxy, logger, config, modeManager, serverManager, this);
     inactivityTracker.scheduleChecker();
-
-    // register listeners
-    proxy.getEventManager().register(this, new PlayerServerConnectListener(proxy, config, serverManager, logger));
-    
+  
     logger.info("LazyMCVelocityCrafty initialized successfully.");
+  }
+
+  @com.velocitypowered.api.event.Subscribe
+  public void onProxyShutdown(ProxyShutdownEvent event) {
+    logger.info("LazyMCVelocityCrafty shutting down...");
+    // Add cleanup code if needed
   }
 
   public ProxyServer getProxy() {
     return proxy;
-  }
-
-  public Logger getLogger() {
-    return logger;
   }
 
   public PluginConfig getConfig() {
@@ -82,5 +105,9 @@ public class LazyMCVelocityCrafty {
 
   public ServerManager getServerManager() {
     return serverManager;
+  }
+
+  public ModeManager getModeManager() {
+    return modeManager;
   }
 }

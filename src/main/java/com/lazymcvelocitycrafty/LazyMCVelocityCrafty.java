@@ -44,11 +44,23 @@ public class LazyMCVelocityCrafty {
     config = ConfigLoader.loadConfig(dataDirectory, logger);
     serverManager = new ServerManager(proxy, logger, config, this);
 
+    // create ModeManager
+    ModeManager modeManager = new ModeManager(dataDirectory, logger);
+    modeManager.load();
+    this.modeManager = modeManager;
+
     //register commands
     proxy.getCommandManager().register(
       proxy.getCommandManager().metaBuilder("server").build(),
       new ServerCommand(proxy, logger, config, serverManager)
     );
+    proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("lvmode").build(), new ModeCommand(modeManager));
+    proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("lvstart").permission("lazymc.start").build(), new StartStopCommand(serverManager, true));
+    proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("lvstop").permission("lazymc.stop").build(), new StartStopCommand(serverManager, false));
+
+    //start inactivity tracker
+    InactivityTracker inactivityTracker = new InactivityTracker(proxy, logger, config, modeManager, serverManager, this);
+    inactivityTracker.scheduleChecker();
 
     //register listeners
     proxy.getEventManager().register(this, new PlayerJoinListener(proxy, config, serverManager, logger));

@@ -27,29 +27,31 @@ public class ModeManager {
     this.logger = logger;
   }
 
+  /**
+   * Load existing modes.json. Non-persistent soft modes are converted to STANDARD.
+   */
   public void load() {
     try {
       if (!Files.exists(modeFile)) {
-        save(); // create empty/default
+        save(); // create empty file
         return;
       }
       try (Reader r = Files.newBufferedReader(modeFile)) {
-        Type t = new TypeToken<Map<String, String>>(){}.getType();
+        Type t = new TypeToken<Map<String, String>>() {}.getType();
         Map<String, String> raw = gson.fromJson(r, t);
-        if (raw != null) {
-          for (Map.Entry<String, String> e : raw.entrySet()) {
-            try {
-              ServerMode m = ServerMode.valueOf(e.getValue());
-              // Soft modes should be reset to Standard on restart if non-persistent
-              if(!m.isPersistent() && (m == ServerMode.SOFT_FORCE_ON || m == ServerMode.SOFT_FORCE_OFF)) {
-                modes.put(e.getKey(), ServerMode.STANDARD);
-              } else {
-                modes.put(e.getKey(), m);
-              }
-            } catch (Exception ex) {
-              logger.warn("Unknown mode '{}' for server {}, defaulting to STANDARD", e.getValue(), e.getKey());
+        if (raw == null) return;
+        for (Map.Entry<String, String> e : raw.entrySet()) {
+          try {
+            ServerMode m = ServerMode.valueOf(e.getValue());
+            // Soft modes should be reset to Standard on restart if non-persistent
+            if(!m.isPersistent() && (m == ServerMode.SOFT_FORCE_ON || m == ServerMode.SOFT_FORCE_OFF)) {
               modes.put(e.getKey(), ServerMode.STANDARD);
+            } else {
+              modes.put(e.getKey(), m);
             }
+          } catch (IllegalArgumentException iae) {
+            logger.warn("Unknown mode '{}' for server {}, defaulting to STANDARD", e.getValue(), e.getKey());
+            modes.put(e.getKey(), ServerMode.STANDARD);
           }
         }
       }
@@ -58,6 +60,9 @@ public class ModeManager {
     }
   }
 
+  /**
+   * Persist modes map to disk (stringified)
+   */
   public synchronized void save() {
     try (Writer w = Files.newBufferedWriter(modeFile)) {
       // serialize as Map<String,String>

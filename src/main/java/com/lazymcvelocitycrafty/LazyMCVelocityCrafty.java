@@ -1,5 +1,5 @@
 package com.example.lazymcvelocitycrafty;
-//Holy shit, that is a lot of imports
+// Holy shit, that is a lot of imports
 import com.google.inject.Inject;
 import com.lazymcvelocitycrafty.commands.ServerCommand;
 import com.lazymcvelocitycrafty.config.ConfigLoader;
@@ -49,7 +49,7 @@ public class LazyMCVelocityCrafty {
     modeManager.load();
     this.modeManager = modeManager;
 
-    //register commands
+    // register commands
     proxy.getCommandManager().register(
       proxy.getCommandManager().metaBuilder("server").build(),
       new ServerCommand(proxy, logger, config, serverManager)
@@ -58,11 +58,11 @@ public class LazyMCVelocityCrafty {
     proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("lvstart").permission("lazymc.start").build(), new StartStopCommand(serverManager, true));
     proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("lvstop").permission("lazymc.stop").build(), new StartStopCommand(serverManager, false));
 
-    //start inactivity tracker
+    // start inactivity tracker
     InactivityTracker inactivityTracker = new InactivityTracker(proxy, logger, config, modeManager, serverManager, this);
     inactivityTracker.scheduleChecker();
 
-    //register listeners
+    // register listeners
     proxy.getEventManager().register(this, new PlayerServerConnectListener(proxy, config, serverManager, logger));
     
     logger.info("LazyMCVelocityCrafty initialized successfully.");

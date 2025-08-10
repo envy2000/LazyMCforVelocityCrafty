@@ -1,2 +1,2 @@
 # LazyMCforVelocityCrafty
-A LazyMC-inspired Velocity plugin for Velocity Proxy setups using Crafty Controller 
+For when you need an automatic server manager for your Crafty Controller Velocity proxy setup, à la lazymc

@@ -1,9 +1,9 @@
 # LazyMCVelocityCrafty configuration
-crafty_url = "https://192.168.1.60:8443"
-crafty_api_key = "your_crafty_api_key_here"
+craftyBaseUrl = "https://192.168.1.60:8443"
+craftyApiKey = "Bearer YOUR_API_KEY_HERE"
 
 # Always-on lobby server name
-lobby_server = "lobby"
+lobbyServer = "lobby"
 
 # If true, plugin handles player fallback when forcing server shutdown
 handle_fallback_on_forced_off = true

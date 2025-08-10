@@ -60,6 +60,22 @@ public class ServerManager {
   public boolean hasServer(String name) {
     return serverUuids.containsKey(name);
   }
+
+  // returns number of players on that backend (0 if not present)
+  public int getPlayerCount(String serverName) {
+    return proxy.getAllPlayers().stream()
+      .filter(p -> p.getCurrentServer().map(c -> c.getServerInfo().getName().equals(serverName)).orElse(false))
+      .mapToInt(p -> 1).sum();
+  }
+
+  // move players to lobby - used when forcibly stopping with fallback
+  public void movePlayersToLobby(String serverName, String lobbyName) {
+    var lobby = proxy.getServer(lobbyName);
+    if (lobby.isEmpty()) return;
+    proxy.getAllPlayers().stream()
+      .filter(p -> p.getCurrentServer().map(c -> c.getServerInfo().getName().equals(serverName)).orElse(false))
+      .forEach(p -> p.createConnectionRequest(lobby.get()).connect());
+  }
   
   /**
    * Starts a backend server via Crafty API.

@@ -1,160 +1,188 @@
 package com.lazymcvelocitycrafty.server;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.lazymcvelocitycrafty.LazyMCVelocityCrafty;
 import com.lazymcvelocitycrafty.config.PluginConfig;
-import com.velocitypowered.api.proxy.ProxyServer;
-import net.kyori.adventure.text.Component;
 import org.slf4j.Logger;
 
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
- * Handles backend server start/stop logic and state tracking.
+ * Controls start/stop requests to Crafty v2 API and tracks pending connection queues.
  */
 public class ServerManager {
   
-  private final ProxyServer proxy;
-  private final Logger logger;
-  private final PluginConfig config;
   private final LazyMCVelocityCrafty plugin;
-  private final Gson gson = new Gson();
+  private final PluginConfig config;
+  private final Logger logger;
+  private final HttpClient http;
 
-  // Maps server name -> Crafty UUID (from config)
-  private final Map<String, String> serverUuids;
+  // pending players per server - plugin may use this to auto-connect when ready
+  private final ConcurrentMap<String, CopyOnWriteArrayList<java.util.UUID>> pendingPlayers = new ConcurrentHashMap<>();
+  private final ScheduledExecutorService poller = Executors.newScheduledThreadPool(1);
 
   //Your guess is as good as mine. (Maybe I just need to actually learn java)
-  public ServerManager(Proxyserver proxy, Logger logger, PluginConfig config, LazyMCVelocityCrafty plugin) {
-    this.proxy = proxy;
-    this.logger = logger;
-    this.config = config;
+  public ServerManager(LazyMCVelocityCrafty plugin, PluginConfig config, Logger logger) {
     this.plugin = plugin;
-    this.serverUuids = config.getServerUuidMap(); // { "survival" -> "uuid", ... }
+    this.config = config;
+    this.logger = logger;
+    this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
   }
-
-  /**
-   * Checks if Velocity knows the server AND it is responsive.
-   */
-  public boolean isServerOnline(String name) {
-    return proxy.getServer(name)
-      .map(server -> {
-        try {
-          return server.ping().join().isPresent();
-        } catch (Exception e) {
-          return false;
-        }
-      })
-      .orElse(false);
-  }
-
+  
   /**
    * Whether this backend is managed by LazyMCVelocityCrafty.
    */
   public boolean hasServer(String name) {
-    return serverUuids.containsKey(name);
+    return config.getManagedServers().contains(name);
   }
 
-  // returns number of players on that backend (0 if not present)
-  public int getPlayerCount(String serverName) {
-    return proxy.getAllPlayers().stream()
-      .filter(p -> p.getCurrentServer().map(c -> c.getServerInfo().getName().equals(serverName)).orElse(false))
-      .mapToInt(p -> 1).sum();
-  }
-
-  // move players to lobby - used when forcibly stopping with fallback
-  public void movePlayersToLobby(String serverName, String lobbyName) {
-    var lobby = proxy.getServer(lobbyName);
-    if (lobby.isEmpty()) return;
-    proxy.getAllPlayers().stream()
-      .filter(p -> p.getCurrentServer().map(c -> c.getServerInfo().getName().equals(serverName)).orElse(false))
-      .forEach(p -> p.createConnectionRequest(lobby.get()).connect());
-  }
-  
   /**
-   * Starts a backend server via Crafty API.
+   * Non-blocking start via Crafty v2 API. Returns a CompletableFuture that completes when the POST
+   * request has been sent and responded (not when the Minecraft server is fully online).
    */
   public CompletableFuture<Void> startServer(String name) {
-    if (!hasServer(name)) {
+    Optional<String> uuidOpt = config.getServerUuid(name);
+    if (uuidOpt.isEmpty) {
       return CompletableFuture.failedFuture(new IllegalArgumentException("Unknown server: " + name));
     }
+    String uuid = uuidOpt.get();
+    String url = String.format("%s/api/v2/servers/%s/action/start_server", trimSlash(config.getCraftyHost()), uuid);
 
-    return CompletableFuture.runAsync(() -> {
-      String uuid = serverUuids.get(name);
-      String endpoint = config.getCraftyBaseUrl() + "/api/v2/servers/" + uuid + "/action/start_server";
-      sendCraftyPost(endpoint);
-      logger.info("Triggered start for backend '{}'", name);
-    });
+    HttpRequest req = HttpRequest.newBuilder()
+      .uri(URI.create(url))
+      .timeout(Duration.ofSeconds(20))
+      .header("Content-Type", "application/json")
+      .header("Authorization", bearerHeader(config.getCraftyApiKey()))
+      .POST(HttpRequest.BodyPublishers.ofString("{}"))
+      .build();
+    
+    logger.info("Sending Crafty start request for {} -> {}", name, url);
+    return http.sendAsync(req, HttpResponse.BodyHandlers.ofString())
+      .thenAccept(resp -> {
+        if (resp.statusCode() / 100 == 2) {
+          logger.info("Crafty accepted start for {}", name);
+        } else {
+          logger.warn("Crafty start for {} returned status {}: {}", name, resp.statusCode(), resp.body());
+        }
+      });
   }
-  
+
   /**
    * Stops a backend server via Crafty API.
    */
   public CompletableFuture<Void> stopServer(String name) {
-    if (!hasServer(name)) {
+    Optional<String> uuidOpt = config.getServerUuid(name);
+    if (uuid.isEmpty()) {
       return CompletableFuture.failedFuture(new IllegalArgumentException("Unknown server: " + name));
     }
+    String uuid = uuidOpt.get();
+    String url = String.format("%s/api/v2/servers/%s/action/stop_server", trimSlash(config.getCraftyHost()), uuid);
 
-    return CompletableFuture.runAsync(() -> {
-      String uuid = serverUuids.get(name);
-      String endpoint = config.getCraftyBaseUrl() + "/api/v2/servers/" + uuid + "/action/stop_server";
-      sendCraftyPost(endpoint);
-      logger.info("Triggered stop for backend '{}'", name);
-    });
+    HttpRequest req = HttpRequest.newBuilder()
+      .uri(URI.create(url))
+      .timeout(Duration.ofSeconds(20))
+      .header("Content-Type", "application/json")
+      .header("Authorization", bearerHeader(config.getCraftyApiKey()))
+      .POST(HttpRequest.BodyPublishers.ofString("{}"))
+      .build();
+
+    logger.info("Sending Crafty stop request for {} -> {}", name, url);
+    return http.sendAsync(req, HttpResponse.BodyHandlers.ofString())
+      .thenAccept(resp -> {
+        if (resp.statusCode() / 100 == 2) {
+          logger.info("Crafty accepted stop for {}", name);
+        } else {
+          logger.warn("Crafty stop for {} returned status {}: {}", name, resp.statusCode(), resp.body());
+        }
+      });
+  }
+ 
+  /**
+   * Returns true if Velocity registers the server and its ping succeeds.
+   */
+  public boolean isServerOnline(String name) {
+    return plugin.getProxy().getServer(name)
+      .map(rs -> {
+        try {
+          return rs.ping().join().isPresent();
+        } catch (Exception e) {
+          return false;
+        }
+      }).orElse(false);
   }
 
   /**
-   * Waits for server to be online up to the configured timeout.
+   * Waits for server to become online, up to timeout seconds (non-blocking).
    */
-  public CompletableFuture<Boolean> waitForServer(String name) {
+  public CompletableFuture<Boolean> waitForServerOnline(String name, int timeoutSeconds, int pollIntervalSeconds) {
     CompletableFuture<Boolean> future = new CompletableFuture<>();
-    long timeout = config.getMaxStartWaitSeconds();
-    long interval = config.getCheckIntervalSeconds();
+    long deadline = System.currentTimeMillis() + timeoutSeconds * 1000L;
 
-    proxy.getScheduler().buildTask(plugin, () -> {
-      if (isServerOnline(name)) {
-        future.complete(true);
+    Runnable check = new Runnable() {
+      @Override
+      public void run() {
+        if (isServerOnline(name)) {
+          future.complete(true);
+        } else if (System.currentTimeMillis() > deadline) {
+          future.complete(false);
+        }
       }
-    }).repeat(interval, TimeUnit.SECONDS)
-      .delay(0, TimeUnit.SECONDS)
-      .schedule();
+    }
 
-    // Timeout task
-    proxy.getScheduler().buildTask(plugin,  () -> {
-      if (!future.isDone()) {
-        future.complete(false);
-      }
-    }).delay(timeout, TimeUnit.SECONDS).schedule();
-
+    ScheduledFuture<?> task = poller.scheduleAtFixedRate(check, 0, Math.max(1, pollIntervalSeconds), TimeUnit.SECONDS);
+    future.whenComplete((ok, ex) -> task.cancel(true));
     return future;
   }
 
   /**
-   * Sends POST request to Crafty API endpoint.
+   * Helpers for pending players queue (we store UUIDs; plugin must map to Player when connecting)
    */
-  private void sendCraftyPost(String endpoint) {
-    try {
-      URL url = new URL(endpoint);
-      HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-      conn.setRequestMethod("POST")
-      conn.setRequestProperty("Content-Type", "application/json");
-      conn.setRequestProperty("Authorization", config.getCraftyApiKey());
-      conn.setDoOutput(true);
-      conn.getOutputStream().write("{}".getBytes(StandardCharsets.UTF_8));
+  public void addPendingPlayer(String serverName, java.util.UUID playerUuid) {
+    pendingPlayers.computeIfAbsent(serverName, k -> new CopyOnWriteArrayList<>()).add(playerUuid);
+  }
+  
+  public java.util.List<java.util.UUID> drainPendingPlayers(String serverName) {
+    var list = pendingPlayers.remove(serverName);
+    return (list == null) ? java.util.List.of() : java.util.List.copyOf(list);
+  }
+  
+  // returns number of players on that backend (0 if not present)
+  public int getPlayerCount(String serverName) {
+    return (int) plugin.getProxy().getAllPlayers().stream()
+      .filter(p -> p.getCurrentServer().map(c -> c.getServerInfo().getName().equals(serverName)).orElse(false))
+      .count();
+  }
+  
+  // move players to lobby - used when forcibly stopping with fallback
+  public void movePlayersToLobby(String serverName, String lobbyName) {
+    var lobby = plugin.getProxy().getServer(lobbyName);
+    if (lobby.isEmpty()) return;
+    var reg = lobby.get();
+    plugin.getProxy().getAllPlayers().stream()
+      .filter(p -> p.getCurrentServer().map(c -> c.getServerInfo().getName().equals(serverName)).orElse(false))
+      .forEach(p -> p.createConnectionRequest(reg).connect());
+  }
+  
+  private static String bearerHeader(String key) {
+    if (key == null) return "";
+    if (key.startsWith("Bearer ")) return key;
+    return "Bearer " + key;
+  }
 
-      int code = conn.getResponseCode();
-      if (code != 200 && code != 204) {
-        logger.warn("Crafty API returned status {} for {}", code, endpoint);
-      }
-      conn.disconnect();
-    } catch (Exception e) {
-      logger.error("Failed to send POST to Crafty API: {}", e.getMessage(), e);
-    }
+  private static String trimSlash(String s) {
+    if (s == null) return "";
+    if (s.endsWith("/")) return s.substring(0, s.length() - 1);
+    return s;
+  }
+
+  public void shutdown() {
+    poller.shutdownNow();
   }
 }

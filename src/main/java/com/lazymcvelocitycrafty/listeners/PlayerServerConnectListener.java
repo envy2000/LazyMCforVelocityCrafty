@@ -27,52 +27,49 @@ public class PlayerServerConnectListener {
   @Subscribe
   public void onServerPreConnect(ServerPreConnectEvent event) {
     Player player = event.getPlayer();
-    String targetServer = event.getResult().getServer().map(s -> s.getServerInfo().getName()).orElse(null);
-    if (targetServer == null) {
-      // No target server, ignore
-      return;
-    }
+    var serverOpt = event.getResult().getServer();
+    if (serverOpt.isEmpty()) return;
+    String target = serverOpt.get().getServerInfo().getName();
 
-    if (!serverManager.hasServer(targetServer)) {
+    if (!serverManager.hasServer(target)) {
       // Not a managed server, let Velocity handle normally
       return;
     }
 
-    ServerMode mode = modeManager.getMode(targetServer);
+    ServerMode mode = modeManager.getMode(target);
+    boolean online = serverManager.isServerOnline(target);
 
-    // Check if backend is online
-    boolean isOnline = serverManager.isServerOnline(target);
-
-    if (!isOnline) {
+    if (!online) {
       if (!mode.allowsAutoStart()) {
-        // Server is off and mode disallows auto start - redirect to lobby
-        event.setResult(ServerPreConnectEvent.ServerResult.denied());
-        Optional<com.velocitypowered.api.proxy.server.RegisteredServer> lobby = plugin.getProxy().getServer(plugin.getConfig().getLobbyServer());
-        if (lobby.isPresent()) {
-          player.sendMessage(Component.text(targetServer + " is currently disabled. Redirecting to lobby.").color(NamedTextColor.RED));
-          player.createConnectionRequest(lobby.get()).fireAndForget();
-        } else {
-          player.sendMessage(Component.text("Lobby server is not configured or offline.".color(NamedTextColor.RED));
-        }
-        return;
-      } else {
-        // Allowed to auto start - start backend and notify player
-        player.sendMessage(Component.text(targetServer + " is starting up. You will be connected automatically when ready.").color(NamedTextColor.YELLOW));
-        serverManager.startServer(targetServer);
-        // Redirect player to lobby if they aren't already there
-        Optional<com.velocitypowered.api.proxy.server.RegisteredServer> currentServer = player.getCurrentServer();
-        String lobbyName = plugin.getConfig().getLobbyServer();
-        if (currentServer.isEmpty() || !currentServer.get().getServerInfo().getName().equals(lobbyName)) {
-          plugin.getProxy().getServer(lobbyName).ifPresent(s -> {
-            player.createConnectionRequest(s).fireAndForget();
-          });
-        }
-        // Cancel this connect event because server is offline, player redirected
+        // mode disallows auto start: send to lobby (if configured) and deny connect
+        player.sendMessage(Component.text(target + " is currently disabled. Redirecting to lobby.").color(NamedTextColor.RED));
+        var lobby = plugin.getProxy().getServer(plugin.getConfig().getLobbyServer());
+        lobby.ifPresent(r -> player.createConnectionRequest(r).connect());
         event.setResult(ServerPreConnectEvent.ServerResult.denied());
         return;
-      }
+      } 
+
+      // mode allows auto-start: request start and handle queueing
+      player.sendMessage(Component.text(target + " is starting. You will be connected automatically when it is ready.").color(NamedTextColor.YELLOW));
+        
+      // queue player for auto-connect
+      serverManager.addPendingPlayer(target, player.getUniqueId());
+
+      // trigger start (async)
+      serverManager.startServer(target).exceptionally(ex -> {
+        player.sendMessage(Component.text("Failed to request server start: " + ex.getMessage()).color(NamedTextColor.RED));
+        return null;
+      });
+
+      // redirect player to lobby if not already there (we keep players on backend per earlier rule only for /server from backend;
+      // ServerPreConnectEvent cannot tell whether this was a /server from backend easily in all cases - for simplicity,
+      // we send to lobby non-online targets.)
+      var lobby = plugin.getProxy().getServer(plugin.getConfig().getLobbyServer());
+      lobby.ifPresent(r -> player.createConnectionRequest(r).connect());
+      event.setResult(ServerPreConnectEvent.ServerResult.denied());
+      return;
     }
 
-    // server is online - let Velocity handle the connect normally
+    // server is online - let Velocity handle the connection normally
   }
 }

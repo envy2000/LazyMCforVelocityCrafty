@@ -2,22 +2,22 @@ package com.example.lazymcvelocitycrafty;
 // Holy shit, that is a lot of imports
 import com.lazymcvelocitycrafty.commands.ModeCommand;
 import com.lazymcvelocitycrafty.commands.StartStopCommand;
+import com.lazymcvelocitycrafty.config.ConfigManager;
 import com.lazymcvelocitycrafty.config.PluginConfig;
 import com.lazymcvelocitycrafty.listeners.PlayerServerConnectListener;
 import com.lazymcvelocitycrafty.mode.ModeManager;
 import com.lazymcvelocitycrafty.server.ServerManager;
 import com.lazymcvelocitycrafty.tracker.InactivityTracker;
+import com.velocitypowered.api.command.CommandManager;
+import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
-import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
+import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
-import com.velocitypowered.api.proxy.server.RegisteredServer;
-import com.velocitypowered.api.proxy.player.Player;
 import org.slf4j.Logger;
 
 import javax.inject.Inject;
 import java.nio.file.Path;
-import java.util.Optional;
 
 @Plugin(
   id = "lazymcvelocitycrafty",
@@ -34,25 +34,25 @@ public class LazyMCVelocityCrafty {
   
   private PluginConfig config;
   private ServerManager serverManager;
-  private ModeManager modeManager
+  private ModeManager modeManager;
+  private InactivityTracker inactivityTracker;
 
   @Inject
-  public LazyMCVelocityCrafty(ProxyServer proxy, Logger logger, Path dataDirectory) {
+  public LazyMCVelocityCrafty(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
     this.proxy = proxy;
     this.logger = logger;
     this.dataDirectory = dataDirectory;
   }
 
-  @com.velocitypowered.api.event.Subscribe
+  @Subscribe
   public void onProxyInitialization(ProxyInitializeEvent event) {
     logger.info("Loading LazyMCVelocityCrafty...");
 
     // Load Config
     try {
-      config = PluginConfig.load(dataDirectory);
-    } catch (Exception e) {
-      logger.error("Failed to load config", e);
-      proxy.shutdown();
+      this.config = ConfigManager.load(dataDirectory, logger);
+    } catch (Exception ex) {
+      logger.error("Failed to load config.toml, shutting down plugin", ex);
       return;
     }
 

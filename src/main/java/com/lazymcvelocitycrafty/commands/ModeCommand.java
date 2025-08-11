@@ -22,7 +22,6 @@ public class ModeCommand implements SimpleCommand {
   public void execute(Invocation invocation) {
     CommandSource src = invocation.source();
     String[] args = invocation.arguments();
-
     if (args.length == 0) {
       src.sendMessage(Component.text("Usage: /lvmode <server> <mode|view>").color(NamedTextColor.YELLOW));
       return;
@@ -37,10 +36,9 @@ public class ModeCommand implements SimpleCommand {
 
     String modeName = args[1].toUpperCase();
     try {
-      ServerMode newMode = ServerMode.valueOf(modeName);
-      modeManager.setMode(server, newMode);
-      src.sendMessage(Component.text("Set " + server + " -> " + newMode.name()).color(NamedTextColor.GREEN));
-      // Immediate actions for hard modes are handled elsewhere (caller may trigger)
+      ServerMode m = ServerMode.valueOf(modeName);
+      modeManager.setMode(server, m);
+      src.sendMessage(Component.text("Set " + server + " -> " + m.name()).color(NamedTextColor.GREEN));
     } catch (IllegalArgumentException iae) {
       src.sendMessage(Component.text("Unknown mode: " + args[1]).color(NamedTextColor.RED));
     }
